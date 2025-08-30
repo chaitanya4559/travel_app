@@ -1,13 +1,15 @@
+import 'dart:ui'; // For BackdropFilter
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:internet_connection_checker/internet_connection_checker.dart';
-import 'package:travelapp/main.dart';
+import 'package:travelapp/main.dart'; // Assuming themeNotifier is here
 import 'package:travelapp/models/journal_entry.dart';
 import 'package:travelapp/services/journal_service.dart';
 import 'package:travelapp/ui/screens/profile_screen.dart';
+import 'package:travelapp/ui/widgets/journal_card.dart';
 import 'package:video_player/video_player.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -23,23 +25,24 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isSyncing = false;
   bool _isOnline = true;
   VideoPlayerController? _videoController;
+  Position? _currentPosition;
 
   // Filter state
   DateTimeRange? _selectedDateRange;
-  double? _proximityRadiusKm; // in Kilometers
+  double? _proximityRadiusKm;
 
   @override
   void initState() {
     super.initState();
     _setVideoBackground(themeNotifier.value);
-    _searchController.addListener(_onSearchChanged);
+    _searchController.addListener(() => setState(() {}));
     _initConnectionListener();
     _syncData(isInitial: true);
+    _getCurrentLocation();
   }
 
   @override
   void dispose() {
-    _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _videoController?.dispose();
     super.dispose();
@@ -48,13 +51,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void _initConnectionListener() {
     InternetConnectionChecker().onStatusChange.listen((status) {
       final isOnlineNow = status == InternetConnectionStatus.connected;
-      if (mounted) {
-        setState(() => _isOnline = isOnlineNow);
-      }
+      if (mounted) setState(() => _isOnline = isOnlineNow);
       if (isOnlineNow) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Back online! Syncing data...'),
-          backgroundColor: Colors.green,
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Back online! Syncing data...'),
+          backgroundColor: Theme.of(context).colorScheme.primary,
         ));
         _syncData();
       }
@@ -65,17 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => _isSyncing = true);
     if (!isInitial) await _journalService.syncEntries();
     await _journalService.fetchAndStoreEntries();
-    if (mounted) {
-      setState(() => _isSyncing = false);
-      // Re-apply search after fetching
-      _onSearchChanged();
-    }
-  }
-
-  void _onSearchChanged() {
-    setState(() {
-      // This just triggers a rebuild. The filtering logic is in build().
-    });
+    if (mounted) setState(() => _isSyncing = false);
   }
 
   void _setVideoBackground(ThemeMode themeMode) {
@@ -86,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _videoController = VideoPlayerController.asset(videoPath)
       ..initialize().then((_) {
         _videoController?.setLooping(true);
+        _videoController?.setVolume(0);
         _videoController?.play();
         if (mounted) setState(() {});
       });
@@ -99,8 +91,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _setVideoBackground(newTheme);
   }
 
-  void _showProfileScreen() {
-    showDialog(context: context, builder: (context) => const ProfileScreen());
+  Future<void> _getCurrentLocation() async {
+    try {
+      final position = await Geolocator.getCurrentPosition();
+      if (mounted) setState(() => _currentPosition = position);
+    } catch (e) {
+      debugPrint("Could not get location: $e");
+    }
   }
 
   void _clearFilters() {
@@ -111,82 +108,122 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showFilterDialog() {
+    DateTimeRange? tempDateRange = _selectedDateRange;
+    double? tempProximity = _proximityRadiusKm;
+
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Filter Entries'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                title: const Text('By Date Range'),
-                subtitle: Text(_selectedDateRange == null
-                    ? 'Not set'
-                    : '${_selectedDateRange!.start.toLocal().toString().split(' ')[0]} - ${_selectedDateRange!.end.toLocal().toString().split(' ')[0]}'),
-                onTap: () async {
-                  final picked = await showDateRangePicker(
-                    context: context,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime.now().add(const Duration(days: 365)),
-                    initialDateRange: _selectedDateRange,
-                  );
-                  if (picked != null) {
-                    setState(() => _selectedDateRange = picked);
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Filter Entries'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    title: const Text('By Date Range'),
+                    subtitle: Text(tempDateRange == null
+                        ? 'Not set'
+                        : '${tempDateRange?.start.toLocal().toString().split(' ')[0]} - ${tempDateRange?.end.toLocal().toString().split(' ')[0]}'),
+                    onTap: () async {
+                      final picked = await showDateRangePicker(
+                        context: context,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                        initialDateRange: tempDateRange,
+                      );
+                      if (picked != null) {
+                        setDialogState(() => tempDateRange = picked);
+                      }
+                    },
+                  ),
+                  ListTile(
+                    title: Text(
+                        'By Proximity (${tempProximity?.toStringAsFixed(0) ?? "Any"} km)'),
+                    onTap: () {
+                      if (tempProximity == null) {
+                        setDialogState(() => tempProximity = 10);
+                      }
+                    },
+                  ),
+                  if (tempProximity != null)
+                    Slider(
+                      value: tempProximity ?? 10,
+                      min: 1,
+                      max: 100,
+                      divisions: 99,
+                      label: '${(tempProximity ?? 10).round()} km',
+                      onChanged: (value) {
+                        setDialogState(() => tempProximity = value);
+                      },
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    _clearFilters();
                     Navigator.pop(context);
-                    _showFilterDialog();
-                  }
-                },
-              ),
-              ListTile(
-                title: Text(
-                    'By Proximity (${_proximityRadiusKm?.toStringAsFixed(0) ?? "Any"} km)'),
-                subtitle: _proximityRadiusKm == null
-                    ? null
-                    : Slider(
-                        value: _proximityRadiusKm!,
-                        min: 1,
-                        max: 100,
-                        divisions: 99,
-                        label: '${_proximityRadiusKm!.round()} km',
-                        onChanged: (value) {
-                          setState(() => _proximityRadiusKm = value);
-                           // A bit of a hack to rebuild dialog content
-                           Navigator.pop(context);
-                           _showFilterDialog();
-                        },
-                      ),
-                onTap: () {
-                  if(_proximityRadiusKm == null){
-                     setState(() => _proximityRadiusKm = 10);
-                     Navigator.pop(context);
-                     _showFilterDialog();
-                  }
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                _clearFilters();
-                Navigator.pop(context);
-              },
-              child: const Text('Clear'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Done'),
-            ),
-          ],
+                  },
+                  child: const Text('Clear All'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedDateRange = tempDateRange;
+                      _proximityRadiusKm = tempProximity;
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
   }
 
+  List<JournalEntry> _getFilteredEntries(List<JournalEntry> entries) {
+    final query = _searchController.text.toLowerCase();
+
+    return entries.where((entry) {
+      if (query.isNotEmpty) {
+        final searchableText =
+            '${entry.title} ${entry.description} ${entry.tags.join(' ')} ${entry.location}'
+                .toLowerCase();
+        if (!searchableText.contains(query)) return false;
+      }
+      if (_selectedDateRange != null) {
+        final entryDate = DateTime.parse(entry.date);
+        if (entryDate.isBefore(_selectedDateRange!.start) ||
+            entryDate.isAfter(
+                _selectedDateRange!.end.add(const Duration(days: 1)))) {
+          return false;
+        }
+      }
+      if (_proximityRadiusKm != null && _currentPosition != null) {
+        final distance = Geolocator.distanceBetween(
+          _currentPosition!.latitude,
+          _currentPosition!.longitude,
+          entry.latitude,
+          entry.longitude,
+        );
+        if ((distance / 1000) > _proximityRadiusKm!) return false;
+      }
+      return true;
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDark = themeNotifier.value == ThemeMode.dark;
+    final theme = Theme.of(context);
     final bool hasActiveFilters =
         _selectedDateRange != null || _proximityRadiusKm != null;
 
@@ -194,196 +231,60 @@ class _HomeScreenState extends State<HomeScreen> {
       canPop: false,
       child: Scaffold(
         extendBodyBehindAppBar: true,
-        appBar: AppBar(
-          backgroundColor: isDark
-              ? Colors.black.withOpacity(0.5)
-              : Colors.white.withOpacity(0.9),
-          elevation: 0,
-          title: _buildSearchBar(isDark),
-          actions: [
-            if (hasActiveFilters)
-              IconButton(
-                  icon: const Icon(Icons.filter_alt_off),
-                  onPressed: _clearFilters,
-                  tooltip: 'Clear Filters'),
-            IconButton(
-                icon: const Icon(Icons.filter_alt),
-                onPressed: _showFilterDialog,
-                tooltip: 'Filters'),
-            IconButton(
-                icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
-                onPressed: _toggleTheme),
-            IconButton(
-                icon: Icon(Icons.person,
-                    color: isDark ? Colors.white : Colors.black),
-                onPressed: _showProfileScreen),
-          ],
-        ),
-        body: Stack(
-          children: [
-            if (_videoController?.value.isInitialized ?? false)
-              SizedBox.expand(
-                  child: FittedBox(
-                      fit: BoxFit.cover,
-                      child: SizedBox(
-                          width: _videoController!.value.size.width,
-                          height: _videoController!.value.size.height,
-                          child: VideoPlayer(_videoController!)))),
-            Container(
-                color: isDark
-                    ? Colors.black.withOpacity(0.4)
-                    : Colors.white.withOpacity(0.9)),
-            SafeArea(
-              child: RefreshIndicator(
-                onRefresh: _syncData,
-                child: Column(
-                  children: [
-                    if (!_isOnline)
-                      Container(
-                        color: Colors.orange,
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(4),
-                        child: const Text('Offline mode',
-                            textAlign: TextAlign.center),
-                      ),
-                    if (_isSyncing) const LinearProgressIndicator(),
-                    Expanded(
-                      child: ValueListenableBuilder(
-                        valueListenable: Hive.box<JournalEntry>('journal_entries')
-                            .listenable(),
-                        builder: (context, box, _) {
-                          List<JournalEntry> entries = box.values.toList();
-                          final query = _searchController.text.toLowerCase();
-
-                          // Apply keyword search
-                          if (query.isNotEmpty) {
-                            entries = entries.where((entry) {
-                              return entry.title.toLowerCase().contains(query) ||
-                                  entry.description
-                                      .toLowerCase()
-                                      .contains(query) ||
-                                  entry.tags.any((t) => t.contains(query)) ||
-                                  entry.location.toLowerCase().contains(query);
-                            }).toList();
-                          }
-
-                          // Apply date range filter
-                          if (_selectedDateRange != null) {
-                            entries = entries.where((entry) {
-                              final entryDate = DateTime.parse(entry.date);
-                              return entryDate
-                                      .isAfter(_selectedDateRange!.start) &&
-                                  entryDate.isBefore(_selectedDateRange!.end
-                                      .add(const Duration(days: 1)));
-                            }).toList();
-                          }
-
-                          // Apply proximity filter
-                          if (_proximityRadiusKm != null) {
-                            // This would be async in a real app to avoid UI jank
-                            // For simplicity, it's sync here.
-                            entries = entries.where((entry) {
-                              // A placeholder for current location
-                              final currentLat =
-                                  17.3850; // Replace with actual current location
-                              final currentLon = 78.4867;
-                              final distance = Geolocator.distanceBetween(
-                                  currentLat,
-                                  currentLon,
-                                  entry.latitude,
-                                  entry.longitude);
-                              return (distance / 1000) <= _proximityRadiusKm!;
-                            }).toList();
-                          }
-
-                          if (entries.isEmpty) {
-                            return Center(
-                                child: Text('No journal entries found.',
-                                    style: GoogleFonts.zenDots(
-                                        color: isDark
-                                            ? Colors.white70
-                                            : Colors.black54)));
-                          }
-
-                          return ListView.builder(
-                            itemCount: entries.length,
-                            itemBuilder: (context, index) {
-                              final entry = entries[index];
-                              return Dismissible(
-                                key: Key(entry.id),
-                                direction: DismissDirection.endToStart,
-                                onDismissed: (direction) async {
-                                  await _journalService.deleteEntry(entry.id);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                          content: Text(
-                                              '${entry.title} deleted')));
-                                },
-                                background: Container(
-                                  color: Colors.red,
-                                  alignment: Alignment.centerRight,
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 20),
-                                  child: const Icon(Icons.delete,
-                                      color: Colors.white),
-                                ),
-                                child: Card(
-                                  color: isDark
-                                      ? Colors.white.withOpacity(0.1)
-                                      : Colors.white,
-                                  margin: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 8),
-                                  child: ListTile(
-                                    leading: entry.isSynced
-                                        ? null
-                                        : const Icon(Icons.sync_problem,
-                                            color: Colors.orange),
-                                    title: Text(entry.title,
-                                        style: GoogleFonts.zenDots(
-                                            fontWeight: FontWeight.bold)),
-                                    subtitle: Text(
-                                        '${entry.location}\n${entry.tags.join(', ')}',
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis),
-                                    onTap: () =>
-                                        context.go('/entry/${entry.id}'),
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => context.go('/entry'),
-          backgroundColor: const Color(0xFFBF360C),
-          child: const Icon(Icons.add, color: Colors.white),
-        ),
+        appBar: _buildAppBar(theme, hasActiveFilters),
+        body: _buildBody(theme),
+        floatingActionButton: _buildFAB(theme),
       ),
     );
   }
 
-  Widget _buildSearchBar(bool isDark) {
+  AppBar _buildAppBar(ThemeData theme, bool hasActiveFilters) {
+    return AppBar(
+      backgroundColor: theme.colorScheme.surface.withOpacity(0.8),
+      elevation: 0,
+      title: _buildSearchBar(theme),
+      actions: [
+        if (hasActiveFilters)
+          IconButton(
+            icon: const Icon(Icons.filter_alt_off),
+            onPressed: _clearFilters,
+            tooltip: 'Clear Filters',
+          ),
+        IconButton(
+          icon: Icon(
+            hasActiveFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
+            color: hasActiveFilters ? theme.colorScheme.primary : null,
+          ),
+          onPressed: _showFilterDialog,
+          tooltip: 'Filters',
+        ),
+        IconButton(
+          icon: Icon(theme.brightness == Brightness.dark
+              ? Icons.light_mode
+              : Icons.dark_mode),
+          onPressed: _toggleTheme,
+        ),
+        IconButton(
+          icon: const Icon(Icons.person_outline),
+          onPressed: () => showDialog(
+              context: context, builder: (_) => const ProfileScreen()),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSearchBar(ThemeData theme) {
     return TextField(
       controller: _searchController,
-      style: TextStyle(color: isDark ? Colors.white : Colors.black),
       decoration: InputDecoration(
         hintText: 'Search journals...',
-        hintStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
         border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none),
         filled: true,
-        fillColor: isDark
-            ? Colors.white.withOpacity(0.1)
-            : Colors.black.withOpacity(0.1),
+        fillColor: theme.colorScheme.surfaceVariant.withOpacity(0.6),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        isDense: true,
         suffixIcon: _searchController.text.isNotEmpty
             ? IconButton(
                 icon: const Icon(Icons.clear),
@@ -391,6 +292,104 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             : null,
       ),
+    );
+  }
+
+  Widget _buildBody(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    return Stack(
+      children: [
+        if (_videoController?.value.isInitialized ?? false)
+          SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _videoController!.value.size.width,
+                height: _videoController!.value.size.height,
+                child: VideoPlayer(_videoController!),
+              ),
+            ),
+          ),
+        SizedBox.expand(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+            child: Container(
+                color: (isDark ? Colors.black : Colors.white).withOpacity(0.4)),
+          ),
+        ),
+        SafeArea(
+          child: Column(
+            children: [
+              if (!_isOnline)
+                Container(
+                  color: theme.colorScheme.tertiaryContainer,
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(4),
+                  child: Text('Offline mode',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: theme.colorScheme.onTertiaryContainer)),
+                ),
+              if (_isSyncing) const LinearProgressIndicator(),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: _syncData,
+                  child: _buildEntriesList(theme),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// ✅ UPDATED: The onDismissed callback is now fully implemented.
+  Widget _buildEntriesList(ThemeData theme) {
+    return ValueListenableBuilder(
+      valueListenable: Hive.box<JournalEntry>('journal_entries').listenable(),
+      builder: (context, box, _) {
+        final entries = _getFilteredEntries(box.values.toList());
+
+        if (entries.isEmpty) {
+          return Center(
+            child: Text(
+              'No journal entries found.',
+              style: GoogleFonts.zenDots(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7)),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.only(top: 8, bottom: 80),
+          itemCount: entries.length,
+          itemBuilder: (context, index) {
+            final entry = entries[index];
+            return JournalCard(
+              entry: entry,
+              onDismissed: (entryId) async {
+                // This now correctly calls the delete service.
+                await _journalService.deleteEntry(entryId);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('${entry.title} deleted')),
+                  );
+                }
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFAB(ThemeData theme) {
+    return FloatingActionButton(
+      onPressed: () => context.go('/entry'),
+      backgroundColor: theme.colorScheme.primary,
+      foregroundColor: theme.colorScheme.onPrimary,
+      child: const Icon(Icons.add),
     );
   }
 }

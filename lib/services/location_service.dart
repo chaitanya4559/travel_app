@@ -1,28 +1,44 @@
+// lib/services/location_service.dart
+
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class LocationService {
+  /// Fetches the current device's GPS position.
   Future<Position?> getCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       return Future.error('Location services are disabled.');
     }
 
-    permission = await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
         return Future.error('Location permissions are denied');
       }
     }
-
+    
     if (permission == LocationPermission.deniedForever) {
-      return Future.error(
-          'Location permissions are permanently denied, we cannot request permissions.');
-    }
+      return Future.error('Location permissions are permanently denied.');
+    } 
 
     return await Geolocator.getCurrentPosition();
+  }
+
+  /// ✅ NEW: Converts latitude and longitude into a human-readable address.
+  Future<String> getAddressFromCoordinates(double lat, double lon) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(lat, lon);
+      if (placemarks.isNotEmpty) {
+        final place = placemarks[0];
+        // Create a more friendly address format
+        return "${place.locality}, ${place.administrativeArea}";
+      }
+      return 'Address not found';
+    } catch (e) {
+      // Fallback to coordinates if address lookup fails
+      return 'Lat: ${lat.toStringAsFixed(2)}, Lon: ${lon.toStringAsFixed(2)}';
+    }
   }
 }

@@ -1,4 +1,4 @@
-// lib/ui/widgets/journal_card.dart
+// FINALIZED CODE
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -53,46 +53,27 @@ class JournalCard extends StatelessWidget {
     );
   }
 
-  /// Builds the image section of the card with a placeholder.
   Widget _buildCardImage(ThemeData theme) {
     if (entry.photoPaths.isNotEmpty) {
-      final String path = entry.photoPaths.first;
-
-      // Check if it's a Supabase URL or local file
-      final bool isUrl = path.startsWith('http');
-
+      final path = entry.photoPaths.first;
       return Hero(
         tag: 'entry_image_${entry.id}',
-        child: isUrl
+        child: path.startsWith('http')
             ? Image.network(
                 path,
-                height: 150,
+                height: 180,
                 width: double.infinity,
                 fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return Center(
-                    child: CircularProgressIndicator(
-                        value: progress.expectedTotalBytes != null
-                            ? progress.cumulativeBytesLoaded /
-                                (progress.expectedTotalBytes ?? 1)
-                            : null),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  return _buildImagePlaceholder(theme,
-                      icon: Icons.broken_image, text: 'Load Error');
-                },
+                errorBuilder: (_, __, ___) => _buildImagePlaceholder(theme,
+                    icon: Icons.broken_image, text: 'Load Error'),
               )
             : Image.file(
                 File(path),
-                height: 150,
+                height: 180,
                 width: double.infinity,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return _buildImagePlaceholder(theme,
-                      icon: Icons.broken_image, text: 'Load Error');
-                },
+                errorBuilder: (_, __, ___) => _buildImagePlaceholder(theme,
+                    icon: Icons.broken_image, text: 'File Error'),
               ),
       );
     } else {
@@ -101,11 +82,10 @@ class JournalCard extends StatelessWidget {
     }
   }
 
-  /// A consistent placeholder widget for when there is no image.
   Widget _buildImagePlaceholder(ThemeData theme,
       {required IconData icon, required String text}) {
     return Container(
-      height: 150,
+      height: 180,
       width: double.infinity,
       color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
       child: Column(
@@ -120,7 +100,6 @@ class JournalCard extends StatelessWidget {
     );
   }
 
-  /// Builds the text content section of the card.
   Widget _buildCardContent(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.all(12.0),
@@ -153,14 +132,16 @@ class JournalCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 8),
           if (entry.tags.isNotEmpty)
-            Text(
-              'Tags: ${entry.tags.join(', ')}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.secondary),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Text(
+                'Tags: ${entry.tags.join(', ')}',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.secondary),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
         ],
       ),

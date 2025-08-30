@@ -1,3 +1,6 @@
+// FINALIZED CODE
+
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -36,8 +39,6 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
   String? _voiceNotePath;
   String _transcription = '';
   bool _isRecording = false;
-
-  // ✅ 1. Add a state variable to hold the original date when editing.
   String? _originalDate;
 
   @override
@@ -80,7 +81,6 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
       _voiceNotePath = entry.voiceNotePath;
       _transcription = entry.transcription;
       _manualTags = List.from(entry.tags);
-      // ✅ 2. When loading an existing entry, store its original date.
       _originalDate = entry.date;
     }
   }
@@ -117,7 +117,6 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
         title: _titleController.text,
         description: _descriptionController.text,
         photoPaths: _photoPaths,
-        // ✅ 3. Use the original date if editing, otherwise use the current date.
         date: _originalDate ?? DateTime.now().toIso8601String(),
         location: _location,
         tags: _manualTags,
@@ -141,16 +140,142 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
     }
   }
 
-  // --- Other UI handlers (no changes needed) ---
   void _onPhotosSelected(List<String> paths) =>
       setState(() => _photoPaths = paths);
-  void _addManualTag(String tag) {/* ... */}
-  void _removeTag(String tag) {/* ... */}
-  Future<void> _getAITags() async {/* ... */}
-  Future<void> _toggleRecording() async {/* ... */}
-  Future<void> _deleteEntry() async {/* ... */}
 
-  // --- Build Methods (no changes needed) ---
+  void _addManualTag(String tag) {
+    if (tag.trim().isNotEmpty && !_manualTags.contains(tag.trim())) {
+      setState(() {
+        _manualTags.add(tag.trim());
+        _tagController.clear();
+      });
+    }
+  }
+
+  void _removeTag(String tag) {
+    setState(() => _manualTags.remove(tag));
+  }
+
+  Future<void> _getAITags() async {
+    if (_photoPaths.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please add a photo first.')),
+      );
+      return;
+    }
+    _showPhotoSelectionDialog();
+  }
+
+  Future<void> _showPhotoSelectionDialog() async {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Select a Photo for AI Tags'),
+          content: SingleChildScrollView(
+            child: Wrap(
+              spacing: 8.0,
+              runSpacing: 8.0,
+              children: _photoPaths.map((path) {
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _generateTagsForSelectedPhoto(path);
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8.0),
+                    child: path.startsWith('http')
+                        ? Image.network(path,
+                            width: 80, height: 80, fit: BoxFit.cover)
+                        : Image.file(File(path),
+                            width: 80, height: 80, fit: BoxFit.cover),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _generateTagsForSelectedPhoto(String photoIdentifier) async {
+    setState(() => _isLoading = true);
+    try {
+      final tags = await _journalService.getAITagsForImage(photoIdentifier);
+      if (tags.isNotEmpty && mounted) {
+        setState(() {
+          _manualTags.addAll(tags);
+          _manualTags = _manualTags.toSet().toList();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('AI tags generated successfully!')));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No relevant tags found for this image.')));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to get AI tags: $e')));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      final path = await _voiceNoteService.stopRecording();
+      if (path != null) {
+        final transcription = await _voiceNoteService.transcribeAudio(path);
+        setState(() {
+          _transcription = transcription;
+        });
+      }
+      setState(() => _isRecording = false);
+    } else {
+      final path = await _voiceNoteService.startRecording();
+      setState(() {
+        _isRecording = true;
+        _voiceNotePath = path;
+        _transcription = 'Transcribing...';
+      });
+    }
+  }
+
+  Future<void> _deleteEntry() async {
+    if (widget.entryId == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Adventure?'),
+        content: const Text('This action is permanent and cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _journalService.deleteEntry(widget.entryId!);
+      if (mounted) {
+        context.go('/');
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Entry deleted.')));
+      }
+    }
+  }
+
+  // --- Build Methods ---
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -183,7 +308,7 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: Form(
               key: _formKey,
               child: Column(
@@ -201,6 +326,7 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
                   const SizedBox(height: 16),
                   _buildTaggingSection(),
                   _buildTagsDisplay(),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -268,7 +394,7 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
               onPressed:
                   (_photoPaths.isNotEmpty && !_isLoading) ? _getAITags : null,
               icon: const Icon(Icons.auto_awesome),
-              label: const Text('Generate AI Tags'),
+              label: const Text('Generate AI Tags from Photo'),
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -307,10 +433,60 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
   }
 
   Widget _buildVoiceNoteSection() {
-    /* Your existing code */ return const SizedBox.shrink();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Voice Note',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                IconButton(
+                  icon: Icon(_isRecording ? Icons.stop : Icons.mic,
+                      color: _isRecording
+                          ? Colors.red
+                          : Theme.of(context).colorScheme.primary),
+                  onPressed: _toggleRecording,
+                ),
+              ],
+            ),
+            if (_voiceNotePath != null)
+              IconButton(
+                icon: const Icon(Icons.play_arrow),
+                onPressed: () =>
+                    _voiceNoteService.startPlayback(_voiceNotePath!),
+              ),
+            if (_transcription.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                child: Text('Transcription: $_transcription',
+                    style: const TextStyle(fontStyle: FontStyle.italic)),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildTagsDisplay() {
-    /* Your existing code */ return const SizedBox.shrink();
+    if (_manualTags.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0),
+      child: Wrap(
+        spacing: 8.0,
+        runSpacing: 4.0,
+        children: _manualTags
+            .map((tag) => Chip(
+                  label: Text(tag),
+                  deleteIcon: const Icon(Icons.close, size: 18),
+                  onDeleted: () => _removeTag(tag),
+                ))
+            .toList(),
+      ),
+    );
   }
 }

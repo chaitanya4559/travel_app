@@ -1,3 +1,5 @@
+// FINALIZED CODE
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -15,50 +17,31 @@ class JournalService {
 
   String? get _userId => _supabaseClient.auth.currentUser?.id;
 
-  // Add or update an entry locally
+  /// Saves the entry locally and then automatically triggers a background sync.
   Future<void> saveEntry(JournalEntry entry) async {
     entry.isSynced = false;
     await _journalBox.put(entry.id, entry);
+    debugPrint("Entry '${entry.title}' saved locally. Triggering sync.");
+    syncEntries();
   }
 
-  // Handles both online and offline deletion
+  /// Adopts a consistent offline-first deletion pattern.
   Future<void> deleteEntry(String id) async {
     final entry = getEntryById(id);
     if (entry == null) return;
 
-    try {
-      // Try to delete from Supabase immediately if online
-      await _supabaseClient.from('journal_entries').delete().match({'id': id});
-
-      // Also delete any associated storage files
-      if (entry.voiceNotePath.isNotEmpty &&
-          entry.voiceNotePath.startsWith('http')) {
-        await _deleteFileFromStorage(entry.voiceNotePath, 'voice-notes');
-      }
-      for (var url in entry.photoPaths.where((p) => p.startsWith('http'))) {
-        await _deleteFileFromStorage(url, 'photos');
-      }
-      
-      // Always delete from local storage after successful remote deletion
-      await _journalBox.delete(id);
-
-    } on SocketException {
-      debugPrint('No internet. Marking entry for deletion to sync later.');
-      // If offline, mark for deletion and save locally.
-      entry.markedForDeletion = true;
-      entry.isSynced = false; // Ensure it gets picked up by the sync process
-      await entry.save();
-    } catch (e) {
-      debugPrint('Error deleting entry from Supabase: $e. Deleting locally.');
-      // If any other error occurs, still delete locally to ensure UI consistency.
-      await _journalBox.delete(id);
-    }
+    entry.markedForDeletion = true;
+    entry.isSynced = false;
+    await entry.save();
+    debugPrint("Entry '${entry.title}' marked for deletion. Triggering sync.");
+    syncEntries();
   }
 
-  List<JournalEntry> getEntries() => _journalBox.values.where((e) => !e.markedForDeletion).toList();
+  List<JournalEntry> getEntries() =>
+      _journalBox.values.where((e) => !e.markedForDeletion).toList();
   JournalEntry? getEntryById(String id) => _journalBox.get(id);
 
-  // Fetch entries from Supabase and sync with local Hive box
+  /// Fetch entries from Supabase and sync with local Hive box
   Future<void> fetchAndStoreEntries() async {
     if (_userId == null) return;
     try {
@@ -68,9 +51,9 @@ class JournalService {
           .eq('user_id', _userId!);
 
       final remoteIds = response.map((e) => e['id'] as String).toSet();
-      final localEntries = Map.fromEntries(_journalBox.values.map((e) => MapEntry(e.id, e)));
+      final localEntries =
+          Map.fromEntries(_journalBox.values.map((e) => MapEntry(e.id, e)));
 
-      // Add/update entries from remote
       for (var entryData in response) {
         final entry = JournalEntry(
             id: entryData['id'],
@@ -87,14 +70,12 @@ class JournalService {
             transcription: entryData['transcription'] ?? '');
         await _journalBox.put(entry.id, entry);
       }
-      
-      // Remove local entries that are no longer on the server (unless they are new and unsynced)
-      for(var localId in localEntries.keys){
-        if(!remoteIds.contains(localId) && localEntries[localId]!.isSynced){
+
+      for (var localId in localEntries.keys) {
+        if (!remoteIds.contains(localId) && localEntries[localId]!.isSynced) {
           await _journalBox.delete(localId);
         }
       }
-
       debugPrint("Data fetched and stored locally.");
     } on SocketException {
       debugPrint("No internet. Cannot fetch entries.");
@@ -103,37 +84,41 @@ class JournalService {
     }
   }
 
-  // Sync all local changes (creations, updates, deletions) to Supabase
+  /// Sync all local changes (creations, updates, deletions) to Supabase
   Future<void> syncEntries() async {
     if (_userId == null) return;
-    
-    // 1. Handle Deletions
-    final entriesToDelete = _journalBox.values.where((e) => e.markedForDeletion).toList();
+
+    final entriesToDelete =
+        _journalBox.values.where((e) => e.markedForDeletion).toList();
     if (entriesToDelete.isNotEmpty) {
       try {
         final idsToDelete = entriesToDelete.map((e) => e.id).toList();
-        await _supabaseClient.from('journal_entries').delete().inFilter('id', idsToDelete);
+        await _supabaseClient
+            .from('journal_entries')
+            .delete()
+            .inFilter('id', idsToDelete);
         for (var entry in entriesToDelete) {
-          // Delete associated files from storage
-          if (entry.voiceNotePath.isNotEmpty && entry.voiceNotePath.startsWith('http')) {
+          if (entry.voiceNotePath.isNotEmpty &&
+              entry.voiceNotePath.startsWith('http')) {
             await _deleteFileFromStorage(entry.voiceNotePath, 'voice-notes');
           }
           for (var url in entry.photoPaths.where((p) => p.startsWith('http'))) {
             await _deleteFileFromStorage(url, 'photos');
           }
-          await _journalBox.delete(entry.id); // Clean up from local DB
+          await _journalBox.delete(entry.id);
         }
         debugPrint('Synced ${entriesToDelete.length} deletions.');
       } on SocketException {
-         debugPrint('No internet. Deletion sync stopped.');
-         return; 
-      } catch(e) {
+        debugPrint('No internet. Deletion sync stopped.');
+        return;
+      } catch (e) {
         debugPrint('Error syncing deletions: $e');
       }
     }
-    
-    // 2. Handle Creations/Updates
-    final unsyncedEntries = _journalBox.values.where((e) => !e.isSynced && !e.markedForDeletion).toList();
+
+    final unsyncedEntries = _journalBox.values
+        .where((e) => !e.isSynced && !e.markedForDeletion)
+        .toList();
     if (unsyncedEntries.isEmpty) {
       debugPrint('All entries are synced.');
       return;
@@ -141,14 +126,13 @@ class JournalService {
 
     for (var entry in unsyncedEntries) {
       try {
-        // Upload files and get public URLs
         List<String> photoUrls = [];
         for (var path in entry.photoPaths) {
           if (File(path).existsSync()) {
             final url = await _uploadFile(path, 'photos');
             if (url != null) photoUrls.add(url);
           } else {
-            photoUrls.add(path); // Assume it's already a URL
+            photoUrls.add(path);
           }
         }
         entry.photoPaths = photoUrls;
@@ -159,17 +143,13 @@ class JournalService {
               await _uploadFile(entry.voiceNotePath, 'voice-notes') ?? '';
         }
 
-        // Generate AI tags if needed
         if (entry.tags.isEmpty && entry.photoPaths.isNotEmpty) {
           final firstPhoto = entry.photoPaths.first;
-          // For simplicity, we assume if it's a URL, tags were generated or not needed.
-          // AI tagging is best for new, local images.
           if (!firstPhoto.startsWith('http') && File(firstPhoto).existsSync()) {
-             entry.tags = await getAITagsForImage(firstPhoto);
+            entry.tags = await getAITagsForImage(firstPhoto);
           }
         }
 
-        // Upsert entry data to Supabase
         await _supabaseClient.from('journal_entries').upsert({
           'id': entry.id,
           'user_id': _userId,
@@ -190,7 +170,7 @@ class JournalService {
         debugPrint('Entry synced: ${entry.title}');
       } on SocketException {
         debugPrint('No internet. Syncing stopped.');
-        return; // Stop sync process if offline
+        return;
       } catch (e) {
         debugPrint('Error syncing entry ${entry.id}: $e');
       }
@@ -222,28 +202,47 @@ class JournalService {
   Future<void> _deleteFileFromStorage(String url, String bucketName) async {
     if (_userId == null) return;
     try {
-      // Correctly parse the file path from the full public URL
       final Uri uri = Uri.parse(url);
-      final path = uri.pathSegments.sublist(uri.pathSegments.indexOf(bucketName) + 1).join('/');
+      final path = uri.pathSegments
+          .sublist(uri.pathSegments.indexOf(bucketName) + 1)
+          .join('/');
       await _supabaseClient.storage.from(bucketName).remove([path]);
     } catch (e) {
       debugPrint('Error deleting file from storage: $e');
     }
   }
 
-  Future<List<String>> getAITagsForImage(String imagePath) async {
+  /// Handles both local file paths and remote http URLs.
+  Future<List<String>> getAITagsForImage(String imageIdentifier) async {
     if (_googleApiKey == null ||
         _googleApiKey == 'YOUR_GOOGLE_CLOUD_API_KEY_HERE') {
       debugPrint("Warning: Google API key is not set. Using mock tags.");
       return ['mock', 'travel', 'photo'];
     }
 
-    final file = File(imagePath);
-    if (!await file.exists()) return [];
+    Uint8List imageBytes;
 
-    final imageBytes = await file.readAsBytes();
+    try {
+      if (imageIdentifier.startsWith('http')) {
+        final response = await http.get(Uri.parse(imageIdentifier));
+        if (response.statusCode == 200) {
+          imageBytes = response.bodyBytes;
+        } else {
+          throw Exception('Failed to download image from URL: ${response.statusCode}');
+        }
+      } else {
+        final file = File(imageIdentifier);
+        if (!await file.exists()) {
+          throw Exception('Image file not found at path: $imageIdentifier');
+        }
+        imageBytes = await file.readAsBytes();
+      }
+    } catch (e) {
+      debugPrint("Error reading image data: $e");
+      throw Exception("Could not process the selected image.");
+    }
+    
     final imageBase64 = base64Encode(imageBytes);
-
     final url = Uri.parse(
         "https://vision.googleapis.com/v1/images:annotate?key=$_googleApiKey");
 
@@ -259,20 +258,31 @@ class JournalService {
     });
 
     try {
-      final response = await http.post(url,
-          headers: {"Content-Type": "application/json"}, body: body);
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: body,
+      );
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['responses'][0]['labelAnnotations'] == null) return [];
-        final labels = data['responses'][0]['labelAnnotations'] as List;
+        final annotations = data['responses'][0]['labelAnnotations'];
+
+        if (annotations == null) {
+          return [];
+        }
+
+        final labels = annotations as List;
         return labels.map((label) => label['description'] as String).toList();
       } else {
-        debugPrint('Google API Error: ${response.body}');
-        return [];
+        final errorBody = jsonDecode(response.body);
+        final errorMessage =
+            errorBody['error']['message'] ?? 'Unknown API Error';
+        throw Exception('Failed to get tags: $errorMessage');
       }
     } catch (e) {
-      debugPrint('HTTP request for AI tags failed: $e');
-      return [];
+      debugPrint('Error getting AI tags: $e');
+      throw Exception('Could not connect to the tag generation service.');
     }
   }
 }

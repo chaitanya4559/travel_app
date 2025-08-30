@@ -1,15 +1,17 @@
-import 'dart:ui'; // For BackdropFilter
+// FINALIZED CODE
+
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:internet_connection_checker/internet_connection_checker.dart';
-import 'package:travelapp/main.dart'; // Assuming themeNotifier is here
+import 'package:travelapp/main.dart';
 import 'package:travelapp/models/journal_entry.dart';
 import 'package:travelapp/services/journal_service.dart';
 import 'package:travelapp/ui/screens/profile_screen.dart';
-import 'package:travelapp/ui/widgets/journal_card.dart';
+import 'package:travelapp/ui/widgets/journal_card.dart'; 
 import 'package:video_player/video_player.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -27,7 +29,6 @@ class _HomeScreenState extends State<HomeScreen> {
   VideoPlayerController? _videoController;
   Position? _currentPosition;
 
-  // Filter state
   DateTimeRange? _selectedDateRange;
   double? _proximityRadiusKm;
 
@@ -344,7 +345,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// ✅ UPDATED: The onDismissed callback is now fully implemented.
   Widget _buildEntriesList(ThemeData theme) {
     return ValueListenableBuilder(
       valueListenable: Hive.box<JournalEntry>('journal_entries').listenable(),
@@ -369,7 +369,6 @@ class _HomeScreenState extends State<HomeScreen> {
             return JournalCard(
               entry: entry,
               onDismissed: (entryId) async {
-                // This now correctly calls the delete service.
                 await _journalService.deleteEntry(entryId);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

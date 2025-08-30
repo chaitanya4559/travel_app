@@ -1,5 +1,3 @@
-// FINALIZED CODE
-
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -11,7 +9,7 @@ import 'package:travelapp/main.dart';
 import 'package:travelapp/models/journal_entry.dart';
 import 'package:travelapp/services/journal_service.dart';
 import 'package:travelapp/ui/screens/profile_screen.dart';
-import 'package:travelapp/ui/widgets/journal_card.dart'; 
+import 'package:travelapp/ui/widgets/journal_card.dart';
 import 'package:video_player/video_player.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -279,6 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
       controller: _searchController,
       decoration: InputDecoration(
         hintText: 'Search journals...',
+        hintStyle: TextStyle(color: theme.colorScheme.onTertiaryContainer),
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none),
@@ -297,13 +296,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBody(ThemeData theme) {
-    final isDark = theme.brightness == Brightness.dark;
     return Stack(
       children: [
+        // Fullscreen video background
         if (_videoController?.value.isInitialized ?? false)
           SizedBox.expand(
             child: FittedBox(
               fit: BoxFit.cover,
+              clipBehavior: Clip.hardEdge,
               child: SizedBox(
                 width: _videoController!.value.size.width,
                 height: _videoController!.value.size.height,
@@ -311,13 +311,15 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-        SizedBox.expand(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
-            child: Container(
-                color: (isDark ? Colors.black : Colors.white).withOpacity(0.4)),
-          ),
+
+        // Subtle overlay for readability
+        Container(
+          color: theme.brightness == Brightness.dark
+              ? Colors.black.withOpacity(0.2)
+              : Colors.white.withOpacity(0.2),
         ),
+
+        // Actual UI content
         SafeArea(
           child: Column(
             children: [

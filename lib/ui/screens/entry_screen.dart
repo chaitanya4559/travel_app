@@ -32,14 +32,15 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
   // State variables
   List<String> _photoPaths = [];
   List<String> _manualTags = [];
-  String _location = 'Fetching location...';
-  double _latitude = 0;
-  double _longitude = 0;
   bool _isLoading = true;
   String? _voiceNotePath;
   String _transcription = '';
   bool _isRecording = false;
   String? _originalDate;
+
+  // Location state
+  String? _deviceLocation;
+  Map<String, String> _photoLocations = {};
 
   @override
   void initState() {
@@ -75,9 +76,19 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
       _titleController.text = entry.title;
       _descriptionController.text = entry.description;
       _photoPaths = List.from(entry.photoPaths);
-      _location = entry.location;
-      _latitude = entry.latitude;
-      _longitude = entry.longitude;
+
+      final allLocations =
+          entry.location.split(' | ').where((loc) => loc.isNotEmpty).toList();
+      if (allLocations.isNotEmpty) {
+        _deviceLocation = allLocations.first;
+        if (allLocations.length > 1) {
+          final photoLocs = allLocations.sublist(1);
+          for (var i = 0; i < _photoPaths.length && i < photoLocs.length; i++) {
+            _photoLocations[_photoPaths[i]] = photoLocs[i];
+          }
+        }
+      }
+
       _voiceNotePath = entry.voiceNotePath;
       _transcription = entry.transcription;
       _manualTags = List.from(entry.tags);
@@ -94,14 +105,12 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
           position.longitude,
         );
         setState(() {
-          _location = address;
-          _latitude = position.latitude;
-          _longitude = position.longitude;
+          _deviceLocation = address;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _location = 'Location not available');
+        setState(() => _deviceLocation = 'Location not available');
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Failed to get location: $e')));
       }
@@ -112,16 +121,22 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
+      final allLocations = <String>[
+        if (_deviceLocation != null) _deviceLocation!,
+        ..._photoPaths.map((path) => _photoLocations[path]).whereType<String>()
+      ];
+
       final entry = JournalEntry(
         id: widget.entryId ?? const Uuid().v4(),
         title: _titleController.text,
         description: _descriptionController.text,
         photoPaths: _photoPaths,
         date: _originalDate ?? DateTime.now().toIso8601String(),
-        location: _location,
+        location: allLocations.join(' | '),
         tags: _manualTags,
-        latitude: _latitude,
-        longitude: _longitude,
+        latitude:
+            0.0, // These could be updated to the primary location if needed
+        longitude: 0.0,
         voiceNotePath: _voiceNotePath ?? '',
         transcription: _transcription,
       );
@@ -140,8 +155,30 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
     }
   }
 
-  void _onPhotosSelected(List<String> paths) =>
-      setState(() => _photoPaths = paths);
+  Future<void> _onPhotosSelected(List<String> paths) async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final newPhotoLocations = <String, String>{};
+
+    for (final path in paths) {
+      if (_photoLocations.containsKey(path)) {
+        newPhotoLocations[path] = _photoLocations[path]!;
+      } else if (!path.startsWith('http')) {
+        final address = await _locationService.getAddressFromExif(path);
+        if (address != null) {
+          newPhotoLocations[path] = address;
+        }
+      }
+    }
+
+    setState(() {
+      _photoPaths = paths;
+      _photoLocations = newPhotoLocations;
+      _isLoading = false;
+    });
+  }
 
   void _addManualTag(String tag) {
     if (tag.trim().isNotEmpty && !_manualTags.contains(tag.trim())) {
@@ -371,13 +408,53 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
   }
 
   Widget _buildLocationSection() {
+    final allLocations = [
+      if (_deviceLocation != null) MapEntry('device', _deviceLocation!),
+      ..._photoPaths.map((path) {
+        return _photoLocations.containsKey(path)
+            ? MapEntry(path, _photoLocations[path]!)
+            : null;
+      }).whereType<MapEntry<String, String>>()
+    ];
+
     return Card(
-      child: ListTile(
-        leading: Icon(Icons.location_on,
-            color: Theme.of(context).colorScheme.secondary),
-        title: Text(_location,
-            style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: const Text('Location'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Locations',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            if (allLocations.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8.0),
+                child: Text('No location data available.',
+                    style: TextStyle(fontStyle: FontStyle.italic)),
+              )
+            else
+              ...allLocations.asMap().entries.map((entry) {
+                final index = entry.key;
+                final locationData = entry.value;
+
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    locationData.key == 'device'
+                        ? Icons.my_location
+                        : Icons.photo_camera,
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
+                  title: Text(locationData.value),
+                  subtitle: Text(locationData.key == 'device'
+                      ? 'Device Location'
+                      : 'From Photo ${index}'),
+                );
+              }).toList(),
+          ],
+        ),
       ),
     );
   }
@@ -454,7 +531,7 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
                 ),
               ],
             ),
-            if (_voiceNotePath != null)
+            if (_voiceNotePath != null && _voiceNotePath!.isNotEmpty)
               IconButton(
                 icon: const Icon(Icons.play_arrow),
                 onPressed: () =>

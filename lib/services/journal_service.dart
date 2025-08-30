@@ -228,7 +228,8 @@ class JournalService {
         if (response.statusCode == 200) {
           imageBytes = response.bodyBytes;
         } else {
-          throw Exception('Failed to download image from URL: ${response.statusCode}');
+          throw Exception(
+              'Failed to download image from URL: ${response.statusCode}');
         }
       } else {
         final file = File(imageIdentifier);
@@ -241,7 +242,7 @@ class JournalService {
       debugPrint("Error reading image data: $e");
       throw Exception("Could not process the selected image.");
     }
-    
+
     final imageBase64 = base64Encode(imageBytes);
     final url = Uri.parse(
         "https://vision.googleapis.com/v1/images:annotate?key=$_googleApiKey");

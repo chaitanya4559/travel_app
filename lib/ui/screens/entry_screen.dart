@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:travelapp/models/journal_entry.dart';
 import 'package:travelapp/services/journal_service.dart';
 import 'package:travelapp/services/location_service.dart';
@@ -36,7 +37,7 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
   String? _voiceNotePath;
   String _transcription = '';
   bool _isRecording = false;
-  String? _originalDate;
+  DateTime _adventureDate = DateTime.now();
 
   // Location state
   String? _deviceLocation;
@@ -92,7 +93,7 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
       _voiceNotePath = entry.voiceNotePath;
       _transcription = entry.transcription;
       _manualTags = List.from(entry.tags);
-      _originalDate = entry.date;
+      _adventureDate = DateTime.parse(entry.date);
     }
   }
 
@@ -131,11 +132,10 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
         title: _titleController.text,
         description: _descriptionController.text,
         photoPaths: _photoPaths,
-        date: _originalDate ?? DateTime.now().toIso8601String(),
+        date: _adventureDate.toIso8601String(),
         location: allLocations.join(' | '),
         tags: _manualTags,
-        latitude:
-            0.0, // These could be updated to the primary location if needed
+        latitude: 0.0,
         longitude: 0.0,
         voiceNotePath: _voiceNotePath ?? '',
         transcription: _transcription,
@@ -152,6 +152,20 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _selectAdventureDate() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _adventureDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (pickedDate != null && pickedDate != _adventureDate) {
+      setState(() {
+        _adventureDate = pickedDate;
+      });
     }
   }
 
@@ -265,24 +279,19 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
     }
   }
 
+  /// ✅ NEW: A simple method to show a "feature not available" message.
+  void _showFeatureNotAvailable() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('This feature is currently not available.'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// ✅ UPDATED: This now calls the placeholder message instead of the real service.
   Future<void> _toggleRecording() async {
-    if (_isRecording) {
-      final path = await _voiceNoteService.stopRecording();
-      if (path != null) {
-        final transcription = await _voiceNoteService.transcribeAudio(path);
-        setState(() {
-          _transcription = transcription;
-        });
-      }
-      setState(() => _isRecording = false);
-    } else {
-      final path = await _voiceNoteService.startRecording();
-      setState(() {
-        _isRecording = true;
-        _voiceNotePath = path;
-        _transcription = 'Transcribing...';
-      });
-    }
+    _showFeatureNotAvailable();
   }
 
   Future<void> _deleteEntry() async {
@@ -401,6 +410,21 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
               validator: (v) =>
                   v!.isEmpty ? 'Please enter a description' : null,
             ),
+            const SizedBox(height: 8),
+            const Divider(),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              leading: const Icon(Icons.calendar_today),
+              title: const Text('Adventure Date'),
+              subtitle: Text(
+                DateFormat.yMMMMd().format(_adventureDate),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              onTap: _selectAdventureDate,
+            ),
           ],
         ),
       ),
@@ -509,6 +533,7 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
     );
   }
 
+  /// ✅ UPDATED: The play and record buttons now show a "not available" message.
   Widget _buildVoiceNoteSection() {
     return Card(
       child: Padding(
@@ -523,19 +548,16 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
                     style:
                         TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 IconButton(
-                  icon: Icon(_isRecording ? Icons.stop : Icons.mic,
-                      color: _isRecording
-                          ? Colors.red
-                          : Theme.of(context).colorScheme.primary),
+                  // The icon is disabled to indicate it's not a real feature yet
+                  icon: Icon(Icons.mic_off, color: Colors.grey),
                   onPressed: _toggleRecording,
                 ),
               ],
             ),
             if (_voiceNotePath != null && _voiceNotePath!.isNotEmpty)
               IconButton(
-                icon: const Icon(Icons.play_arrow),
-                onPressed: () =>
-                    _voiceNoteService.startPlayback(_voiceNotePath!),
+                icon: const Icon(Icons.play_disabled, color: Colors.grey),
+                onPressed: _showFeatureNotAvailable,
               ),
             if (_transcription.isNotEmpty)
               Padding(

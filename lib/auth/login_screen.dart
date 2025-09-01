@@ -1,4 +1,7 @@
+// FINALIZED CODE
+
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -28,47 +31,33 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _loginUser() async {
     if (!_formKey.currentState!.validate()) return;
-
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
+    setState(() { _isLoading = true; _error = null; });
     try {
-      final response = await Supabase.instance.client.auth.signInWithPassword(
+      await Supabase.instance.client.auth.signInWithPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-
-      if (response.user == null) {
-        setState(() => _error = "Login failed: Invalid credentials.");
-      }
-      // ✅ No navigation here → GoRouter redirect handles it
+      // No navigation needed, GoRouter's redirect will handle it.
     } on AuthException catch (e) {
-      setState(() => _error = "Auth Error: ${e.message}");
+      setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = "Unexpected Error: $e");
+      setState(() => _error = "An unexpected error occurred.");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _googleSignIn() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
+    setState(() { _isLoading = true; _error = null; });
     try {
       await Supabase.instance.client.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: 'io.supabase.flutter://login-callback/',
+        redirectTo: kIsWeb ? null : 'io.supabase.flutter://login-callback/',
       );
-      // ✅ After Google login, Supabase updates session → GoRouter redirects
     } on AuthException catch (e) {
-      setState(() => _error = 'Auth Error: ${e.message}');
+      setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = 'Error: ${e.toString()}');
+      setState(() => _error = 'An unexpected error occurred.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -77,189 +66,135 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: Container(
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: NetworkImage(
-                "https://images.unsplash.com/photo-1528543606781-2f6e6857f318?q=80&w=1965",
-              ),
-              fit: BoxFit.cover,
+      resizeToAvoidBottomInset: false,
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: NetworkImage(
+              "https://images.unsplash.com/photo-1528543606781-2f6e6857f318?q=80&w=1965",
             ),
+            fit: BoxFit.cover,
           ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                reverse: true,
-                padding: EdgeInsets.only(
-                  left: 24,
-                  right: 24,
-                  top: 24,
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-                ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: IntrinsicHeight(
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(25.0),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white12),
-                        ),
-                        child: Form(
-                          key: _formKey,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                "Welcome back,",
-                                style: GoogleFonts.zenDots(
-                                  color: Colors.black,
-                                  fontSize: 24,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-
-                              // Email field
-                              const Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text("Email",
-                                    style: TextStyle(color: Colors.black)),
-                              ),
-                              _buildTextField(
-                                _emailController,
-                                "Enter your email",
-                                validator: (v) => v == null || !v.contains('@')
-                                    ? "Enter valid email"
-                                    : null,
-                              ),
-                              const SizedBox(height: 20),
-
-                              // Password field
-                              const Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text("Password",
-                                    style: TextStyle(color: Colors.black)),
-                              ),
-                              _buildTextField(
-                                _passwordController,
-                                "Enter your password",
-                                obscureText: true,
-                                validator: (v) => v == null || v.length < 6
-                                    ? "Min 6 characters"
-                                    : null,
-                              ),
-                              const SizedBox(height: 12),
-
-                              // Error message
-                              if (_error != null)
-                                Text(
-                                  _error!,
-                                  style: const TextStyle(color: Colors.red),
-                                  textAlign: TextAlign.center,
-                                ),
-
-                              const SizedBox(height: 12),
-
-                              // Buttons
-                              _isLoading
-                                  ? const CircularProgressIndicator(
-                                      color: Color(0xFFBF360C),
-                                    )
-                                  : Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        ElevatedButton(
-                                          onPressed: _loginUser,
-                                          style: _buttonStyle(),
-                                          child: const Text(
-                                            "Login",
-                                            style: TextStyle(fontSize: 20),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 10),
-
-                                        // Google Sign-In (only for mobile)
-                                        if (!kIsWeb &&
-                                            (Platform.isAndroid ||
-                                                Platform.isIOS))
-                                          ElevatedButton.icon(
-                                            onPressed: _googleSignIn,
-                                            icon: Image.asset(
-                                              'assets/google.png',
-                                              height: 24,
-                                            ),
-                                            label: const Text(
-                                                'Sign in with Google'),
-                                            style: ElevatedButton.styleFrom(
-                                              foregroundColor: Colors.black,
-                                              backgroundColor: Colors.white,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                                side: const BorderSide(
-                                                    color: Colors.grey),
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-
-                              TextButton(
-                                onPressed: () => context.go('/signup'),
-                                child: const Text(
-                                  "Don't have an account? Sign Up",
-                                  style: TextStyle(color: Color(0xFFBF360C)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+        ),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  padding: const EdgeInsets.all(24.0),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.2)),
                   ),
+                  child: _buildLoginForm(context),
                 ),
-              );
-            },
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildTextField(
-    TextEditingController controller,
-    String hint, {
-    bool obscureText = false,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: controller,
-      validator: validator,
-      obscureText: obscureText,
-      style: const TextStyle(color: Colors.black),
-      decoration: _inputDecoration(hint),
+  Widget _buildLoginForm(BuildContext context) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            "Welcome Back",
+            style: GoogleFonts.zenDots(
+              color: Colors.black87,
+              fontSize: 24,
+            ),
+          ),
+          const SizedBox(height: 24),
+          TextFormField(
+            controller: _emailController,
+            decoration: _inputDecoration("Email"),
+            keyboardType: TextInputType.emailAddress,
+            style: const TextStyle(color: Colors.black87),
+            validator: (v) => v == null || !v.contains('@') ? "Enter a valid email" : null,
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _passwordController,
+            decoration: _inputDecoration("Password"),
+            obscureText: true,
+            style: const TextStyle(color: Colors.black87),
+            validator: (v) => v == null || v.length < 6 ? "Password must be at least 6 characters" : null,
+          ),
+          const SizedBox(height: 12),
+          if (_error != null)
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              textAlign: TextAlign.center,
+            ),
+          const SizedBox(height: 12),
+          if (_isLoading)
+            const CircularProgressIndicator()
+          else
+            _buildAuthButtons(),
+          
+          TextButton(
+            onPressed: () => context.go('/signup'),
+            child: Text(
+              "Don't have an account? Sign Up",
+              style: TextStyle(color: Theme.of(context).colorScheme.primary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  InputDecoration _inputDecoration(String hint) => InputDecoration(
-        hintText: hint,
+  Widget _buildAuthButtons() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ElevatedButton(
+          onPressed: _loginUser,
+          style: _buttonStyle(context),
+          child: const Text("Login"),
+        ),
+        const SizedBox(height: 10),
+        if (!kIsWeb && (Platform.isAndroid || Platform.isIOS))
+          ElevatedButton.icon(
+            onPressed: _googleSignIn,
+            icon: Image.asset('assets/google.png', height: 24),
+            label: const Text('Sign in with Google'),
+            style: ElevatedButton.styleFrom(
+              foregroundColor: Colors.black87,
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Colors.grey),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+      ],
+    );
+  }
+
+  InputDecoration _inputDecoration(String label) => InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: Colors.grey.shade700),
         filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
+        fillColor: Colors.white.withOpacity(0.7),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       );
 
-  ButtonStyle _buttonStyle() => ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFFBF360C),
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+  ButtonStyle _buttonStyle(BuildContext context) => ElevatedButton.styleFrom(
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
+        padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 4,
       );
 }
-
-// ✅ No HomeScreen here – it already exists in your `ui/screens/home_screen.dart`

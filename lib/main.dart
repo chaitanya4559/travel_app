@@ -1,3 +1,5 @@
+// FINALIZED CODE
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:go_router/go_router.dart';
@@ -10,28 +12,32 @@ import 'package:travelapp/models/journal_entry.dart';
 import 'package:travelapp/ui/screens/entry_screen.dart';
 import 'package:travelapp/ui/screens/home_screen.dart';
 
-// Global ValueNotifier for theme changes, accessible throughout the app.
+
+// Global ValueNotifier for theme changes
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
+// ✅ 1. Create a ValueNotifier to notify GoRouter of auth state changes.
+final _authNotifier = ValueNotifier<bool>(false);
+
 void main() async {
-  // Ensure all Flutter bindings are initialized before running the app.
   WidgetsFlutterBinding.ensureInitialized();
-  // Load environment variables from the .env file.
   await dotenv.load(fileName: ".env");
 
-  // Initialize Supabase client.
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL']!,
     anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
   );
 
-  // Initialize Hive for local database storage.
   final appDocumentDirectory = await getApplicationDocumentsDirectory();
   await Hive.initFlutter(appDocumentDirectory.path);
-  // Register the adapter for the JournalEntry model.
   Hive.registerAdapter(JournalEntryAdapter());
-  // Open the box (table) for journal entries.
   await Hive.openBox<JournalEntry>('journal_entries');
+
+  // ✅ 2. Listen to Supabase auth changes and update the notifier.
+  // This is the key to making navigation automatic after login/logout.
+  Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    _authNotifier.value = data.session != null;
+  });
 
   runApp(const MyApp());
 }
@@ -39,19 +45,17 @@ void main() async {
 // Centralized navigation setup using GoRouter.
 final GoRouter _router = GoRouter(
   initialLocation: '/',
-  // Redirect logic: If the user is not logged in, they are always directed to the login screen.
-  // This protects all other routes.
+  // ✅ 3. Pass the notifier to GoRouter. It will now rebuild routes on auth changes.
+  refreshListenable: _authNotifier,
   redirect: (BuildContext context, GoRouterState state) {
-    final session = Supabase.instance.client.auth.currentSession;
-    final bool loggedIn = session != null;
-    final loggingIn = state.matchedLocation == '/login' || state.matchedLocation == '/signup';
+    final bool loggedIn = Supabase.instance.client.auth.currentUser != null;
+    final bool isLoggingIn = state.matchedLocation == '/login' || state.matchedLocation == '/signup';
 
-    if (!loggedIn) {
-      // If not logged in, only allow access to login/signup pages.
-      return loggingIn ? null : '/login';
+    if (!loggedIn && !isLoggingIn) {
+      return '/login';
     }
-    if (loggingIn) {
-      // If logged in and trying to access login/signup, redirect to home.
+
+    if (loggedIn && isLoggingIn) {
       return '/';
     }
     return null;
@@ -79,14 +83,12 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ValueListenableBuilder rebuilds the widget tree when the themeNotifier changes.
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
       builder: (_, mode, __) {
         return MaterialApp.router(
-          title: 'CarMate',
+          title: 'WanderLog', // Using the new project name
           debugShowCheckedModeBanner: false,
-          // Light Theme Configuration
           theme: ThemeData.light().copyWith(
             colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFBF360C)),
             appBarTheme: const AppBarTheme(
@@ -94,14 +96,13 @@ class MyApp extends StatelessWidget {
               elevation: 0,
             ),
           ),
-          // Dark Theme Configuration
           darkTheme: ThemeData.dark().copyWith(
             colorScheme: ColorScheme.fromSeed(
               seedColor: const Color(0xFFBF360C),
               brightness: Brightness.dark,
             ),
-            scaffoldBackgroundColor: Colors.black,
-            canvasColor: Colors.black,
+            scaffoldBackgroundColor: const Color(0xFF121212),
+            canvasColor: const Color(0xFF121212),
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.transparent,
               elevation: 0,

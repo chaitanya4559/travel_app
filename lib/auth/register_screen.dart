@@ -1,3 +1,6 @@
+// FINALIZED CODE
+
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -14,9 +17,16 @@ class _SignupScreenState extends State<SignupScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
 
   Future<void> _signUp() async {
     if (!_formKey.currentState!.validate()) return;
@@ -24,10 +34,7 @@ class _SignupScreenState extends State<SignupScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final name = _nameController.text.trim();
-    // Phone is collected but not used in the profile table schema. You can add it if needed.
-    // final phone = _phoneController.text.trim();
     try {
-      // Pass user metadata during sign-up. The Supabase trigger will handle profile creation.
       await Supabase.instance.client.auth.signUp(
         email: email,
         password: password,
@@ -51,15 +58,14 @@ class _SignupScreenState extends State<SignupScreen> {
 
   void _showErrorSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(
-          content: Text(message),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: Theme.of(context).colorScheme.error,
+    ));
   }
 
   void _showSuccessSnackBar(String message) {
-     if (!mounted) return;
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(message),
       backgroundColor: Colors.green,
@@ -67,154 +73,116 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    _nameController.dispose();
-    _phoneController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: Container(
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: NetworkImage(
-                  "https://images.unsplash.com/photo-1528543606781-2f6e6857f318?q=80&w=1965"),
-              fit: BoxFit.cover,
+      resizeToAvoidBottomInset: false,
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: NetworkImage(
+              "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=2070",
             ),
+            fit: BoxFit.cover,
           ),
-          child: LayoutBuilder(builder: (context, constraints) {
-            return SingleChildScrollView(
-              reverse: true,
-              padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                top: 24,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(25.0),
-                      decoration: BoxDecoration(
-                        color: const Color.fromARGB(255, 255, 255, 255),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white30),
-                      ),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(height: 10),
-                            Text(
-                              "Create Account",
-                              style: GoogleFonts.zenDots(
-                                color: const Color.fromARGB(255, 0, 0, 0),
-                                fontSize: 24,
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            _buildLabel("Name"),
-                            _buildTextField(
-                              _nameController,
-                              "Enter your name",
-                               validator: (v) => v == null || v.isEmpty ? "Name is required" : null
-                            ),
-                            const SizedBox(height: 10),
-                            _buildLabel("Phone"),
-                            _buildTextField(
-                              _phoneController,
-                              "Enter your phone number",
-                            ),
-                            const SizedBox(height: 10),
-                            _buildLabel("Email"),
-                            _buildTextField(
-                              _emailController,
-                              "Enter your email",
-                              validator: (value) =>
-                                  value == null || !value.contains('@')
-                                      ? "Enter valid email"
-                                      : null,
-                            ),
-                            const SizedBox(height: 10),
-                            _buildLabel("Password"),
-                            _buildTextField(
-                              _passwordController,
-                              "Enter your password",
-                              obscureText: true,
-                              validator: (value) =>
-                                  value == null || value.length < 6
-                                      ? "Min 6 characters"
-                                      : null,
-                            ),
-                            const SizedBox(height: 12),
-                            _isLoading
-                                ? const CircularProgressIndicator(
-                                    color: Color(0xFFBF360C))
-                                : ElevatedButton(
-                                    onPressed: _signUp,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFBF360C),
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 24, vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12)),
-                                    ),
-                                    child: const Text("Sign Up",
-                                        style: TextStyle(fontSize: 20)),
-                                  ),
-                            TextButton(
-                              onPressed: () => context.go('/login'),
-                              child: const Text(
-                                "Already have an account? Login",
-                                style: TextStyle(color: Color(0xFFBF360C)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+        ),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  padding: const EdgeInsets.all(24.0),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.2)),
                   ),
+                  child: _buildSignUpForm(context),
                 ),
               ),
-            );
-          }),
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildLabel(String label) => Align(
-        alignment: Alignment.centerLeft,
-        child: Text(label, style: const TextStyle(color: Colors.black)),
+  Widget _buildSignUpForm(BuildContext context) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            "Create Account",
+            textAlign: TextAlign.center,
+            style: GoogleFonts.zenDots(
+              color: Colors.black87,
+              fontSize: 24,
+            ),
+          ),
+          const SizedBox(height: 24),
+          TextFormField(
+              controller: _nameController,
+              decoration: _inputDecoration("Full Name"),
+              style: const TextStyle(color: Colors.black87),
+              validator: (v) =>
+                  v == null || v.isEmpty ? "Name is required" : null),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _emailController,
+            decoration: _inputDecoration("Email"),
+            keyboardType: TextInputType.emailAddress,
+            style: const TextStyle(color: Colors.black87),
+            validator: (v) =>
+                v == null || !v.contains('@') ? "Enter a valid email" : null,
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _passwordController,
+            decoration: _inputDecoration("Password"),
+            obscureText: true,
+            style: const TextStyle(color: Colors.black87),
+            validator: (v) => v == null || v.length < 6
+                ? "Password must be at least 6 characters"
+                : null,
+          ),
+          const SizedBox(height: 20),
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator())
+          else
+            ElevatedButton(
+              onPressed: _signUp,
+              style: _buttonStyle(context),
+              child: const Text("Sign Up"),
+            ),
+          TextButton(
+            onPressed: () => context.go('/login'),
+            child: Text(
+              "Already have an account? Log In",
+              style: TextStyle(color: Theme.of(context).colorScheme.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String label) => InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: Colors.grey.shade700),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.7),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       );
 
-  Widget _buildTextField(
-    TextEditingController controller,
-    String hint, {
-    bool obscureText = false,
-    String? Function(String?)? validator,
-  }) =>
-      TextFormField(
-        controller: controller,
-        validator: validator,
-        obscureText: obscureText,
-        style: const TextStyle(color: Colors.black),
-        decoration: InputDecoration(
-          hintText: hint,
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
-        ),
+  ButtonStyle _buttonStyle(BuildContext context) => ElevatedButton.styleFrom(
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       );
 }

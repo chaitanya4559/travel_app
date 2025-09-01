@@ -58,20 +58,7 @@ The goal of **WanderLog** is to provide a seamless and reliable way for traveler
 | **Media** | [image_picker](https://pub.dev/packages/image_picker), [video_player](https://pub.dev/packages/video_player) |
 
 ---
-## 📹 Demo Video
 
-🎥 **Watch the full walkthrough of the app's features here:**
-
-[Link to Your Demo Video on Loom/YouTube]
-
----
-## 📱 Download APK
-
-📦 **Download the latest release APK for Android:**
-
-[Link to Your GitHub Releases Page for the APK]
-
----
 ## 🚀 Setup Instructions
 
 1️⃣ **Clone the Repository**

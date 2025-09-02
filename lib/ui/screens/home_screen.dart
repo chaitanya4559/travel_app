@@ -265,8 +265,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         IconButton(
           icon: const Icon(Icons.person_outline),
-          onPressed: () => showDialog(
-              context: context, builder: (_) => const ProfileScreen()),
+          onPressed: () =>
+              showDialog(context: context, builder: (_) => const ProfileScreen()),
         ),
       ],
     );

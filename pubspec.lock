@@ -54,6 +54,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.4"
+  archive:
+    dependency: transitive
+    description:
+      name: archive
+      sha256: cb6a278ef2dbb298455e1a713bda08524a175630ec643a242c399c932a0a1f7d
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.6.1"
   args:
     dependency: transitive
     description:
@@ -829,6 +837,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.16.0"
+  metadata:
+    dependency: "direct main"
+    description:
+      name: metadata
+      sha256: "1220d7391d1c9d161e3af477c088fee7ffe2b74324e793adf56aeb359dfae16f"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.0"
   mime:
     dependency: transitive
     description:
@@ -1314,6 +1330,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.4"
+  utility:
+    dependency: transitive
+    description:
+      name: utility
+      sha256: "200d264c3804e87da7ea36aa81bd73fb845d2cb7b2e820f3f357a0a2bd4e37f5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.3"
   uuid:
     dependency: "direct main"
     description:
@@ -1434,6 +1458,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.6.1"
+  xmp:
+    dependency: transitive
+    description:
+      name: xmp
+      sha256: "317a023e882101713cd12a25aa9f2e2f2ed61146f2a79e20ed0dd31787b9b895"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.3"
   yaml:
     dependency: transitive
     description:

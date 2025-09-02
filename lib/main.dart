@@ -12,11 +12,10 @@ import 'package:travelapp/models/journal_entry.dart';
 import 'package:travelapp/ui/screens/entry_screen.dart';
 import 'package:travelapp/ui/screens/home_screen.dart';
 
-
 // Global ValueNotifier for theme changes
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
-// ✅ 1. Create a ValueNotifier to notify GoRouter of auth state changes.
+// 1. Create a ValueNotifier to notify GoRouter of auth state changes.
 final _authNotifier = ValueNotifier<bool>(false);
 
 void main() async {
@@ -33,7 +32,7 @@ void main() async {
   Hive.registerAdapter(JournalEntryAdapter());
   await Hive.openBox<JournalEntry>('journal_entries');
 
-  // ✅ 2. Listen to Supabase auth changes and update the notifier.
+  // 2. Listen to Supabase auth changes and update the notifier.
   // This is the key to making navigation automatic after login/logout.
   Supabase.instance.client.auth.onAuthStateChange.listen((data) {
     _authNotifier.value = data.session != null;
@@ -45,7 +44,7 @@ void main() async {
 // Centralized navigation setup using GoRouter.
 final GoRouter _router = GoRouter(
   initialLocation: '/',
-  // ✅ 3. Pass the notifier to GoRouter. It will now rebuild routes on auth changes.
+  // 3. Pass the notifier to GoRouter. It will now rebuild routes on auth changes.
   refreshListenable: _authNotifier,
   redirect: (BuildContext context, GoRouterState state) {
     final bool loggedIn = Supabase.instance.client.auth.currentUser != null;

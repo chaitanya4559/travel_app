@@ -1,9 +1,9 @@
-// FINALIZED CODE
-
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:travelapp/models/journal_entry.dart';
 import 'package:travelapp/services/journal_service.dart';
@@ -11,6 +11,7 @@ import 'package:travelapp/services/location_service.dart';
 import 'package:travelapp/services/voice_note_service.dart';
 import 'package:travelapp/ui/widgets/photo_picker.dart';
 import 'package:uuid/uuid.dart';
+import 'package:exif/exif.dart';
 
 class JournalEntryScreen extends StatefulWidget {
   final String? entryId;
@@ -42,6 +43,8 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
   // Location state
   String? _deviceLocation;
   Map<String, String> _photoLocations = {};
+  double _latitude = 0.0;
+  double _longitude = 0.0;
 
   @override
   void initState() {
@@ -90,6 +93,8 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
         }
       }
 
+      _latitude = entry.latitude;
+      _longitude = entry.longitude;
       _voiceNotePath = entry.voiceNotePath;
       _transcription = entry.transcription;
       _manualTags = List.from(entry.tags);
@@ -107,13 +112,15 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
         );
         setState(() {
           _deviceLocation = address;
+          _latitude = position.latitude;
+          _longitude = position.longitude;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _deviceLocation = 'Location not available');
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to get location: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Failed to get location: $e')));
       }
     }
   }
@@ -135,8 +142,8 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
         date: _adventureDate.toIso8601String(),
         location: allLocations.join(' | '),
         tags: _manualTags,
-        latitude: 0.0,
-        longitude: 0.0,
+        latitude: _latitude,
+        longitude: _longitude,
         voiceNotePath: _voiceNotePath ?? '',
         transcription: _transcription,
       );
@@ -169,26 +176,41 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
     }
   }
 
-  Future<void> _onPhotosSelected(List<String> paths) async {
+  Future<void> _onPhotosSelected(
+      List<String> allPaths, PhotoSelectionResult? newPhoto) async {
     setState(() {
+      _photoPaths = allPaths;
       _isLoading = true;
     });
 
     final newPhotoLocations = <String, String>{};
-
-    for (final path in paths) {
+    for (final path in allPaths) {
       if (_photoLocations.containsKey(path)) {
         newPhotoLocations[path] = _photoLocations[path]!;
-      } else if (!path.startsWith('http')) {
-        final address = await _locationService.getAddressFromExif(path);
-        if (address != null) {
-          newPhotoLocations[path] = address;
+      }
+    }
+
+    if (newPhoto != null) {
+      String? newAddress;
+      if (newPhoto.source == ImageSource.camera) {
+        newAddress = _deviceLocation;
+        // Keep the device's main lat/lon as it's the most current.
+      } else {
+        final locationData =
+            await _locationService.getAddressFromExif(newPhoto.path);
+        if (locationData != null) {
+          newAddress = locationData;
+          // Set primary lat/lon if it's the first photo with GPS and device location hasn't been set.
+          // If you need latitude/longitude, you must update getAddressFromExif to return those.
         }
+      }
+
+      if (newAddress != null) {
+        newPhotoLocations[newPhoto.path] = newAddress;
       }
     }
 
     setState(() {
-      _photoPaths = paths;
       _photoLocations = newPhotoLocations;
       _isLoading = false;
     });
@@ -279,7 +301,6 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
     }
   }
 
-  /// ✅ NEW: A simple method to show a "feature not available" message.
   void _showFeatureNotAvailable() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -289,7 +310,6 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
     );
   }
 
-  /// ✅ UPDATED: This now calls the placeholder message instead of the real service.
   Future<void> _toggleRecording() async {
     _showFeatureNotAvailable();
   }
@@ -474,7 +494,7 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
                   title: Text(locationData.value),
                   subtitle: Text(locationData.key == 'device'
                       ? 'Device Location'
-                      : 'From Photo ${index}'),
+                      : 'From Photo ${index + 1}'),
                 );
               }).toList(),
           ],
@@ -533,7 +553,6 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
     );
   }
 
-  /// ✅ UPDATED: The play and record buttons now show a "not available" message.
   Widget _buildVoiceNoteSection() {
     return Card(
       child: Padding(
@@ -548,9 +567,8 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
                     style:
                         TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 IconButton(
-                  // The icon is disabled to indicate it's not a real feature yet
-                  icon: Icon(Icons.mic_off, color: Colors.grey),
-                  onPressed: _toggleRecording,
+                  icon: const Icon(Icons.mic_off, color: Colors.grey),
+                  onPressed: _showFeatureNotAvailable,
                 ),
               ],
             ),

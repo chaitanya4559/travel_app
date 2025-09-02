@@ -2,8 +2,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+// Helper class to return both the path and the source of the new image.
+class PhotoSelectionResult {
+  final String path;
+  final ImageSource source;
+  PhotoSelectionResult(this.path, this.source);
+}
+
 class PhotoPicker extends StatefulWidget {
-  final Function(List<String>) onPhotosSelected;
+  // The callback now provides the full list and the newly added photo's details.
+  final Function(List<String> allPaths, PhotoSelectionResult? newPhoto)
+      onPhotosSelected;
   final List<String> initialPhotos;
 
   const PhotoPicker({
@@ -32,16 +41,20 @@ class _PhotoPickerState extends State<PhotoPicker> {
           const SnackBar(content: Text('You can add a maximum of 5 photos.')));
       return;
     }
-    final pickedFile = await _picker.pickImage(source: source);
+    final pickedFile =
+        await _picker.pickImage(source: source, requestFullMetadata: true);
     if (pickedFile != null) {
       setState(() => _photos.add(pickedFile.path));
-      widget.onPhotosSelected(_photos);
+      // Pass both the full list and the details of the new photo back.
+      widget.onPhotosSelected(
+          _photos, PhotoSelectionResult(pickedFile.path, source));
     }
   }
 
   void _removePhoto(String path) {
     setState(() => _photos.remove(path));
-    widget.onPhotosSelected(_photos);
+    // When removing, we don't have a "new" photo, so the second argument is null.
+    widget.onPhotosSelected(_photos, null);
   }
 
   void _reorderPhotos(int oldIndex, int newIndex) {
@@ -49,12 +62,13 @@ class _PhotoPickerState extends State<PhotoPicker> {
       if (newIndex > oldIndex) newIndex -= 1;
       final String photo = _photos.removeAt(oldIndex);
       _photos.insert(newIndex, photo);
-      widget.onPhotosSelected(_photos);
+      widget.onPhotosSelected(_photos, null);
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    // The UI for this widget is unchanged.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

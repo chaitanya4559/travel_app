@@ -1,5 +1,3 @@
-// FINALIZED CODE
-
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
@@ -44,67 +42,75 @@ class LocationService {
     }
   }
 
-  /// Extracts GPS data from an image's EXIF metadata and returns a readable address.
+  /// ✅ REWRITTEN: A safer method that checks types before processing.
   Future<String?> getAddressFromExif(String filePath) async {
     try {
       final fileBytes = await File(filePath).readAsBytes();
       final exifData = await readExifFromBytes(fileBytes);
+
+      if (exifData.isEmpty) return null;
 
       final gpsLatitudeTag = exifData['GPS GPSLatitude'];
       final gpsLongitudeTag = exifData['GPS GPSLongitude'];
       final gpsLatitudeRefTag = exifData['GPS GPSLatitudeRef'];
       final gpsLongitudeRefTag = exifData['GPS GPSLongitudeRef'];
 
-      if (gpsLatitudeTag != null &&
-          gpsLongitudeTag != null &&
-          gpsLatitudeRefTag != null &&
-          gpsLongitudeRefTag != null) {
-        double lat;
-        double lon;
-
-        final latValues = gpsLatitudeTag.values.toList().cast<Ratio>();
-        final lonValues = gpsLongitudeTag.values.toList().cast<Ratio>();
-
-        if (latValues.length == 1 && lonValues.length == 1) {
-          lat = latValues.first.toDouble();
-          lon = lonValues.first.toDouble();
-        } else if (latValues.length == 3 && lonValues.length == 3) {
-          lat = _dmsToDD(latValues);
-          lon = _dmsToDD(lonValues);
-        } else {
-          return null;
-        }
-
-        if (lat.isNaN || lon.isNaN || !lat.isFinite || !lon.isFinite) {
-          return null;
-        }
-
-        final latRef = gpsLatitudeRefTag.printable;
-        final lonRef = gpsLongitudeRefTag.printable;
-
-        final finalLat = (latRef == 'S') ? -lat : lat;
-        final finalLon = (lonRef == 'W') ? -lon : lon;
-
-        return await getAddressFromCoordinates(finalLat, finalLon);
+      if (gpsLatitudeTag == null ||
+          gpsLongitudeTag == null ||
+          gpsLatitudeRefTag == null ||
+          gpsLongitudeRefTag == null) {
+        return null;
       }
-      return null;
+
+      // Safely get the values without assuming their type yet.
+      final latValuesDynamic = gpsLatitudeTag.values;
+      final lonValuesDynamic = gpsLongitudeTag.values;
+
+      // First, check if the data is in the expected List<Ratio> format.
+      if (latValuesDynamic is! List<Ratio> || lonValuesDynamic is! List<Ratio>) {
+        debugPrint(
+            "GPS data is not in the expected Ratio format. Found: ${latValuesDynamic.runtimeType}");
+        return null;
+      }
+
+      // Now that we've checked the type, we can safely cast and use the variables.
+      final List<Ratio> latValues = latValuesDynamic as List<Ratio>;
+      final List<Ratio> lonValues = lonValuesDynamic as List<Ratio>;
+
+      double lat;
+      double lon;
+
+      if (latValues.length == 1 && lonValues.length == 1) {
+        lat = latValues.first.toDouble();
+        lon = lonValues.first.toDouble();
+      } else if (latValues.length == 3 && lonValues.length == 3) {
+        lat = _dmsToDD(latValues);
+        lon = _dmsToDD(lonValues);
+      } else {
+        return null;
+      }
+
+      if (lat.isNaN || lon.isNaN) {
+        return null;
+      }
+
+      final latRef = gpsLatitudeRefTag.printable;
+      final lonRef = gpsLongitudeRefTag.printable;
+
+      final finalLat = (latRef == 'S') ? -lat : lat;
+      final finalLon = (lonRef == 'W') ? -lon : lon;
+
+      return await getAddressFromCoordinates(finalLat, finalLon);
     } catch (e) {
       debugPrint('Error reading EXIF data: $e');
       return null;
     }
   }
 
-  /// ✅ UPDATED: Helper to convert DMS to DD, now with a safety check for zero denominators.
+  /// Helper to convert Degrees/Minutes/Seconds (DMS) to Decimal Degrees (DD).
   double _dmsToDD(List<Ratio> dms) {
     try {
-      if (dms.length != 3) return double.nan;
-
-      // Safety check for invalid data that causes NaN errors.
-      if (dms[0].denominator == 0 ||
-          dms[1].denominator == 0 ||
-          dms[2].denominator == 0) {
-        debugPrint(
-            "Invalid EXIF data: DMS component has a denominator of zero.");
+      if (dms.any((ratio) => ratio.denominator == 0)) {
         return double.nan;
       }
 
@@ -112,13 +118,8 @@ class LocationService {
       final minutes = dms[1].toDouble();
       final seconds = dms[2].toDouble();
 
-      if (!degrees.isFinite || !minutes.isFinite || !seconds.isFinite) {
-        return double.nan;
-      }
-
       return degrees + (minutes / 60) + (seconds / 3600);
     } catch (e) {
-      debugPrint("Error in _dmsToDD conversion: $e");
       return double.nan;
     }
   }

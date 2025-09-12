@@ -5,13 +5,15 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+// Add these two imports for path manipulation
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:travelapp/models/journal_entry.dart';
 import 'package:travelapp/services/journal_service.dart';
 import 'package:travelapp/services/location_service.dart';
 import 'package:travelapp/services/voice_note_service.dart';
 import 'package:travelapp/ui/widgets/photo_picker.dart';
 import 'package:uuid/uuid.dart';
-import 'package:exif/exif.dart';
 
 class JournalEntryScreen extends StatefulWidget {
   final String? entryId;
@@ -175,9 +177,35 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
       });
     }
   }
+  
+  // ✅ NEW HELPER FUNCTION TO COPY FILES
+  Future<String> _copyFileToAppDirectory(String originalPath) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final fileName = p.basename(originalPath);
+    final savedFile = await File(originalPath).copy('${appDir.path}/$fileName');
+    return savedFile.path;
+  }
+
 
   Future<void> _onPhotosSelected(
       List<String> allPaths, PhotoSelectionResult? newPhoto) async {
+    
+    // ✅ --- START OF MODIFIED LOGIC ---
+    if (newPhoto != null) {
+      // If a new photo was added, copy it to a permanent location
+      final permanentPath = await _copyFileToAppDirectory(newPhoto.path);
+      
+      // Update the allPaths list to replace the temporary path with the new permanent one
+      final tempPathIndex = allPaths.indexOf(newPhoto.path);
+      if (tempPathIndex != -1) {
+        allPaths[tempPathIndex] = permanentPath;
+      }
+      
+      // Update the newPhoto object itself for location processing
+      newPhoto = PhotoSelectionResult(permanentPath, newPhoto.source);
+    }
+    // ✅ --- END OF MODIFIED LOGIC ---
+
     setState(() {
       _photoPaths = allPaths;
       _isLoading = true;
@@ -194,14 +222,11 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
       String? newAddress;
       if (newPhoto.source == ImageSource.camera) {
         newAddress = _deviceLocation;
-        // Keep the device's main lat/lon as it's the most current.
       } else {
         final locationData =
             await _locationService.getAddressFromExif(newPhoto.path);
         if (locationData != null) {
           newAddress = locationData;
-          // Set primary lat/lon if it's the first photo with GPS and device location hasn't been set.
-          // If you need latitude/longitude, you must update getAddressFromExif to return those.
         }
       }
 
@@ -332,7 +357,19 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
       ),
     );
     if (confirmed == true) {
+      // Before deleting the entry, delete its local files
+      final entry = _journalService.getEntryById(widget.entryId!);
+      if (entry != null) {
+        for (final path in entry.photoPaths) {
+          final file = File(path);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        }
+      }
+      
       await _journalService.deleteEntry(widget.entryId!);
+      
       if (mounted) {
         context.go('/');
         ScaffoldMessenger.of(context)
@@ -403,6 +440,8 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
     );
   }
 
+  // The rest of the build methods are unchanged...
+  // ... (omitted for brevity, they are the same as your original file)
   Widget _buildTextFieldsSection() {
     return Card(
       child: Padding(

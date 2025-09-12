@@ -53,15 +53,24 @@ class JournalService {
           Map.fromEntries(_journalBox.values.map((e) => MapEntry(e.id, e)));
 
       for (var entryData in response) {
+        final localEntry = localEntries[entryData['id']];
+        
+        // ✅ PRESERVE LOCAL PATHS IF THEY EXIST
+        List<String> finalPhotoPaths = List<String>.from(entryData['photo_paths'] ?? []);
+        if (localEntry != null && !localEntry.isSynced) {
+           // If local entry is unsynced, its local paths are the source of truth.
+           finalPhotoPaths = localEntry.photoPaths;
+        }
+
         final entry = JournalEntry(
             id: entryData['id'],
             title: entryData['title'],
             description: entryData['description'],
-            photoPaths: List<String>.from(entryData['photo_paths'] ?? []),
+            photoPaths: finalPhotoPaths, // Use the determined paths
             date: entryData['date'],
             location: entryData['location'] ?? 'Unknown Location',
             tags: List<String>.from(entryData['tags'] ?? []),
-            isSynced: true,
+            isSynced: localEntry?.isSynced ?? true, // Preserve local sync status
             latitude: (entryData['latitude'] ?? 0.0).toDouble(),
             longitude: (entryData['longitude'] ?? 0.0).toDouble(),
             voiceNotePath: entryData['voice_note_path'] ?? '',
@@ -100,8 +109,12 @@ class JournalService {
               entry.voiceNotePath.startsWith('http')) {
             await _deleteFileFromStorage(entry.voiceNotePath, 'voice-notes');
           }
-          for (var url in entry.photoPaths.where((p) => p.startsWith('http'))) {
-            await _deleteFileFromStorage(url, 'photos');
+          // Also delete remote photos from storage
+          for (var localPath in entry.photoPaths) {
+             final remoteUrl = await _getPublicUrlForFile(localPath, 'photos');
+             if(remoteUrl != null) {
+                await _deleteFileFromStorage(remoteUrl, 'photos');
+             }
           }
           await _journalBox.delete(entry.id);
         }
@@ -124,44 +137,50 @@ class JournalService {
 
     for (var entry in unsyncedEntries) {
       try {
-        List<String> photoUrls = [];
+        // ✅ --- START OF MODIFIED LOGIC ---
+        // We generate a list of remote URLs for the payload, but we DO NOT
+        // modify the entry.photoPaths which holds our precious local file paths.
+        List<String> remotePhotoUrls = [];
         for (var path in entry.photoPaths) {
           if (File(path).existsSync()) {
             final url = await _uploadFile(path, 'photos');
-            if (url != null) photoUrls.add(url);
-          } else {
-            photoUrls.add(path);
+            if (url != null) remotePhotoUrls.add(url);
+          } else if (path.startsWith('http')) {
+            // If it's already a URL, just add it.
+            remotePhotoUrls.add(path);
           }
         }
-        entry.photoPaths = photoUrls;
 
+        String remoteVoiceNoteUrl = entry.voiceNotePath;
         if (entry.voiceNotePath.isNotEmpty &&
             File(entry.voiceNotePath).existsSync()) {
-          entry.voiceNotePath =
+          remoteVoiceNoteUrl =
               await _uploadFile(entry.voiceNotePath, 'voice-notes') ?? '';
         }
 
+        // Auto-tagging logic now checks the local file path
         if (entry.tags.isEmpty && entry.photoPaths.isNotEmpty) {
-          final firstPhoto = entry.photoPaths.first;
-          if (!firstPhoto.startsWith('http') && File(firstPhoto).existsSync()) {
-            entry.tags = await getAITagsForImage(firstPhoto);
+          final firstLocalPhoto = entry.photoPaths.first;
+          if (File(firstLocalPhoto).existsSync()) {
+            entry.tags = await getAITagsForImage(firstLocalPhoto);
           }
         }
-
+        
         await _supabaseClient.from('journal_entries').upsert({
           'id': entry.id,
           'user_id': _userId,
           'title': entry.title,
           'description': entry.description,
-          'photo_paths': entry.photoPaths,
+          'photo_paths': remotePhotoUrls, // ✅ Use the remote URL list here
           'date': entry.date,
           'tags': entry.tags,
           'latitude': entry.latitude,
           'longitude': entry.longitude,
-          'voice_note_path': entry.voiceNotePath,
+          'voice_note_path': remoteVoiceNoteUrl,
           'transcription': entry.transcription,
           'location': entry.location
         });
+        // ✅ --- END OF MODIFIED LOGIC ---
 
         entry.isSynced = true;
         await entry.save();
@@ -196,6 +215,15 @@ class JournalService {
       return null;
     }
   }
+  
+  // ✅ NEW HELPER TO GET A URL WITHOUT UPLOADING
+  Future<String?> _getPublicUrlForFile(String filePath, String bucketName) async {
+     if (_userId == null) return null;
+     final fileName = filePath.split('/').last;
+     final path = '$_userId/$fileName';
+     return _supabaseClient.storage.from(bucketName).getPublicUrl(path);
+  }
+
 
   Future<void> _deleteFileFromStorage(String url, String bucketName) async {
     if (_userId == null) return;
@@ -210,6 +238,8 @@ class JournalService {
     }
   }
 
+  // The getAITagsForImage method is unchanged...
+  // ... (omitted for brevity)
   /// Handles both local file paths and remote http URLs.
   Future<List<String>> getAITagsForImage(String imageIdentifier) async {
     if (_googleApiKey == null ||
